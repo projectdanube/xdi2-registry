@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:util="http://www.springframework.org/schema/util" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-2.0.xsd http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-2.0.xsd">
+
+	<!-- XDI ENDPOINT REGISTRY AND TRANSPORT -->
+
+	<bean id="UriMessagingTargetRegistry" class="xdi2.transport.registry.impl.uri.UriMessagingTargetRegistry" init-method="init" destroy-method="shutdown" />
+
+	<bean id="HttpTransport" class="xdi2.transport.impl.http.HttpTransport" init-method="init" destroy-method="shutdown">
+		<property name="uriMessagingTargetRegistry" ref="UriMessagingTargetRegistry" />
+		<property name="interceptors">
+			<util:list>
+				<bean class="xdi2.transport.impl.http.interceptor.impl.DebugHttpTransportInterceptor" />
+				<bean class="xdi2.transport.impl.http.interceptor.impl.StatusHttpTransportInterceptor" />
+			</util:list>
+		</property>
+	</bean>
+
+	<!-- SPRING -->
+
+	<bean id="conversionService" class="org.springframework.context.support.ConversionServiceFactoryBean">
+		<property name="converters">
+			<list>
+				<bean class="xdi2.transport.spring.XDI2SpringConverter" />
+			</list>
+		</property>
+	</bean>
+
+    <bean class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+        <property name="locations">
+            <list>
+                <value>file:./etc/xdi2/xdi2-registry.properties</value>
+                <value>file:/etc/xdi2/xdi2-registry.properties</value>
+            </list>
+        </property>
+        <property name="ignoreResourceNotFound" value="true" />
+        <property name="ignoreUnresolvablePlaceholders" value="false" />
+    </bean>
+
+	<!-- REGISTRY MESSAGING TARGET at /registry -->
+
+	<bean id="registryGraphFactory" class="xdi2.core.impl.wrapped.file.FileWrapperGraphFactory">
+		<property name="path" value="registry.xdi" />
+		<property name="mimeType" value="text/xdi;ordered=1" />
+	</bean>
+
+	<bean id="registryGraph" factory-bean="registryGraphFactory" factory-method="openGraph" />
+
+	<bean name="/registry" class="xdi2.messaging.target.impl.graph.GraphMessagingTarget">
+		<property name="graph" ref="registryGraph" />
+		<property name="interceptors">
+			<util:list>
+				<bean class="xdi2.messaging.target.interceptor.impl.BootstrapInterceptor">
+					<property name="bootstrapOwner" value="${cloudnumber}" />
+					<property name="bootstrapOwnerSynonyms">
+						<util:list>
+							<value>${cloudname}</value>
+						</util:list>
+					</property>
+					<property name="bootstrapRootLinkContract" value="true" />
+					<property name="bootstrapPublicLinkContract" value="true" />
+					<property name="bootstrapTimestamp" value="true" />
+					<property name="bootstrapGraph">
+						<value>
+							({$self}/$public)$do/$get/{$self}$msg$encrypt$keypair&lt;$public&gt;&lt;$key&gt;
+							({$self}/$public)($do/$get){$self}$msg$encrypt$keypair/$is#/{}
+							({$self}/$public)$do/$get/{$self}$msg$sig$keypair&lt;$public&gt;&lt;$key&gt;
+							({$self}/$public)($do/$get){$self}$msg$sig$keypair/$is#/{}
+						</value>
+					</property>
+					<property name="bootstrapMessageEnvelope">
+						<value>
+							($anon[$msg]*!1$do/$do$keypair){$self}$msg$encrypt$keypair/$is#/$rsa$2048
+							($anon[$msg]*!1$do/$do$keypair){$self}$msg$sig$keypair/$is#/$rsa$2048
+						</value>
+					</property>
+				</bean>
+				<bean class="xdi2.messaging.target.interceptor.impl.RefInterceptor" />
+				<bean class="xdi2.messaging.target.interceptor.impl.ToInterceptor" />
+				<bean class="xdi2.messaging.target.interceptor.impl.authentication.secrettoken.AuthenticationSecretTokenInterceptor">
+					<property name="secretTokenAuthenticator">
+						<bean class="xdi2.messaging.target.interceptor.impl.authentication.secrettoken.StaticSecretTokenAuthenticator">
+							<property name="globalSalt" value="${secrettokenglobalsalt}" />
+							<property name="localSaltAndDigestSecretTokens">
+								<util:map>
+									<entry key="${cloudnumber}" value="${secrettokendigest}" />
+								</util:map>
+							</property>
+						</bean>
+					</property>
+				</bean>
+				<bean class="xdi2.messaging.target.interceptor.impl.linkcontract.LinkContractInterceptor" />
+			</util:list>
+		</property>
+	</bean>
+
+</beans>
